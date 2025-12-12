@@ -1,0 +1,111 @@
+<!-- timestamp element created with assistance of Github CoPilot chat with prompt: -->
+<!-- create an HTML input element that allows the user to enter a number greater than or equal to 0, where it displays in time format mm:ss.ss and the up and down arrows change the amount by 0.1 seconds -->
+
+<!-- Time input: displays mm:ss.ss, min 0, arrows/keys change by 0.1s -->
+<div class="time-input">
+    <label for="timeInput">Duration</label>
+    <div class="time-control" style="display:inline-flex;align-items:center;gap:.4rem;">
+        <input id="timeInput" inputmode="decimal" aria-label="Time in mm:ss.ss" value="00:00.00"
+            style="width:9ch;font-family:monospace;text-align:center;">
+        <div style="display:flex;flex-direction:column;">
+            <button type="button" data-action="up" aria-label="Increase 0.1s" style="padding:2px 6px">▲</button>
+            <button type="button" data-action="down" aria-label="Decrease 0.1s" style="padding:2px 6px">▼</button>
+        </div>
+    </div>
+    <!-- hidden numeric value in seconds for form submission -->
+    <input type="hidden" id="timeSeconds" name="timeSeconds" value="0">
+</div>
+
+<script>
+    (() => {
+        const input = document.getElementById('timeInput');
+        const hidden = document.getElementById('timeSeconds');
+        const STEP = 0.1;
+
+        function clamp(v) { return Math.max(0, v); }
+
+        function formatTime(seconds) {
+            seconds = clamp(Number((seconds || 0)));
+            seconds = Math.max(0, Math.round(seconds * 100) / 100);
+            const m = Math.floor(seconds / 60);
+            const s = (seconds % 60).toFixed(2);
+            const mm = String(m).padStart(2, '0');
+            const ss = s.padStart(5, '0'); // ensures "ss.ss" like "05.20"
+            return `${mm}:${ss}`;
+        }
+
+        function parseTime(str) {
+            if (typeof str !== 'string') return 0;
+            str = str.trim();
+            if (!str) return 0;
+            if (str.includes(':')) {
+                const parts = str.split(':').map(p => p.trim());
+                const secPart = parts.pop();
+                const minPart = parts.join(':') || '0';
+                const minutes = parseFloat(minPart.replace(/[^\d.-]/g, '') || 0);
+                const seconds = parseFloat(secPart.replace(/[^\d.-]/g, '') || 0);
+                if (Number.isFinite(minutes) && Number.isFinite(seconds)) return Math.max(0, minutes * 60 + seconds);
+                return 0;
+            } else {
+                const n = parseFloat(str.replace(/[^\d.-]/g, ''));
+                return Number.isFinite(n) ? Math.max(0, n) : 0;
+            }
+        }
+
+        function setSeconds(s) {
+            s = Math.round(clamp(Number(s || 0)) * 100) / 100;
+            hidden.value = String(s);
+            input.value = formatTime(s);
+        }
+
+        // initialize
+        setSeconds(0);
+
+        // keyboard arrows + pageup/pagedown adjustment
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const delta = (e.key === 'ArrowUp' ? STEP : -STEP);
+                setSeconds(parseFloat(hidden.value || 0) + delta);
+            } else if (e.key === 'PageUp' || e.key === 'PageDown') {
+                e.preventDefault();
+                const delta = (e.key === 'PageUp' ? STEP * 10 : -STEP * 10);
+                setSeconds(parseFloat(hidden.value || 0) + delta);
+            }
+        });
+
+        // mouse wheel when focused
+        input.addEventListener('wheel', (e) => {
+            if (document.activeElement !== input) return;
+            e.preventDefault();
+            setSeconds(parseFloat(hidden.value || 0) + (e.deltaY < 0 ? STEP : -STEP));
+        }, { passive: false });
+
+        // spin buttons
+        document.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.getAttribute('data-action');
+                setSeconds(parseFloat(hidden.value || 0) + (action === 'up' ? STEP : -STEP));
+                input.focus();
+            });
+        });
+
+        // on blur parse typed value and normalize to mm:ss.ss
+        input.addEventListener('blur', () => {
+            setSeconds(parseTime(input.value));
+        });
+
+        // on Enter also parse & commit
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                setSeconds(parseTime(input.value));
+                input.blur();
+            }
+        });
+
+        // expose a small API if someone wants to get/set seconds
+        input.getSeconds = () => parseFloat(hidden.value || 0);
+        input.setSeconds = (s) => setSeconds(s);
+
+    })();
+</script>

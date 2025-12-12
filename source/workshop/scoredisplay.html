@@ -1,0 +1,155 @@
+<html>
+
+<head>
+    <title> OSMD Raw Javascript Usage Example </title>
+    <link href="../../node_modules/bootswatch/dist/journal/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ndDqU0Gzau9qJ1lfW4pNLlhNTkCfHzAVBReH9diLvGRem5+R9g2FzA8ZGN954O5Q"
+        crossorigin="anonymous"></script>
+    <style>
+
+    </style>
+</head>
+
+<body>
+
+    <script src="../../scripts/opensheetmusicdisplay.min.js"></script>
+    <!-- you need to provide the .js file, see README.md-->
+    <div id="osmdCanvas" />
+
+    <input type="file" id="files" />
+    <output id="list"></output>
+
+    <div id="osmdCanvasScore"></div>
+
+    <script>
+
+        function getOSMDCoordinates(clickLocation, osmdCanvas) {
+            const sheetX = (clickLocation.x - osmdCanvas.offsetLeft) / 10;
+            const sheetY = (clickLocation.y - osmdCanvas.offsetTop) / 10;
+            return new opensheetmusicdisplay.PointF2D(sheetX, sheetY);
+        }
+        function moveCursorToVoiceEntry(clickedVoiceEntry) {
+            const cursor = osmd.cursor;
+            cursor.reset();
+            const oldVoiceEntry = cursor.Iterator.CurrentVoiceEntries[0];
+            let newVoiceEntry = undefined;
+            while (!cursor.Iterator.EndReached) {
+                for (let i = 0; i < cursor.Iterator.CurrentVoiceEntries.length; i++) {
+                    const currentVoiceEntry = cursor.Iterator.CurrentVoiceEntries[i];
+                    if (currentVoiceEntry == clickedVoiceEntry) {
+                        newVoiceEntry = currentVoiceEntry;
+                        console.log(`cursor moved to clicked voice entry`)
+                    }
+                }
+                if (newVoiceEntry != undefined) {
+                    break;
+                }
+                cursor.next();
+            }
+            if (newVoiceEntry == undefined) {
+                // move cursor back to original position
+                cursor.reset();
+                while (!cursor.Iterator.EndReached && cursor.Iterator.CurrentVoiceEntries[0] != oldVoiceEntry) {
+                    cursor.next();
+                }
+            }
+            // draws a point at click location for troubleshooting
+            // osmd.Drawer.DrawOverlayLine({ x: sheetLocation.x - 0.05, y: sheetLocation.y - 0.05 }, { x: sheetLocation.x + 0.05, y: sheetLocation.y + 0.05 }, osmd.graphic.MusicPages[0])
+
+            // const nearestNote = osmd.GraphicSheet.GetNearestNote(sheetLocation);
+            // nearestNote.sourceNote.noteheadColor = "#0000FF";
+        }
+
+
+        function handleFileSelect(evt) {
+            var maxOSMDDisplays = 10; // how many scores can be displayed at once (in a vertical layout)
+            var files = evt.target.files; // FileList object
+            var osmdDisplays = Math.min(files.length, maxOSMDDisplays);
+
+            var output = [];
+            for (var i = 0, file = files[i]; i < osmdDisplays; i++) {
+                output.push("<li><strong>", escape(file.name), "</strong> </li>");
+                output.push("<div id='osmdCanvas" + i + "'/>");
+            }
+            document.getElementById("list").innerHTML = "<ul>" + output.join("") + "</ul>";
+
+            for (var i = 0, file = files[i]; i < osmdDisplays; i++) {
+                if (!file.name.match('.*\.xml') && !file.name.match('.*\.musicxml') && false) {
+                    alert('You selected a non-xml file. Please select only music xml files.');
+                    continue;
+                }
+
+                var reader = new FileReader();
+
+                reader.onload = function (e) {
+                    const SCORE_DIV_ID = "osmdCanvasScore";
+                    var osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(SCORE_DIV_ID, {
+                        // set options here
+                        backend: "svg",
+                        drawFromMeasureNumber: 1,
+                        drawUpToMeasureNumber: Number.MAX_SAFE_INTEGER // draw all measures, up to the end of the sample
+                    });
+                    osmd
+                        .load(e.target.result)
+                        .then(
+                            function () {
+                                window.osmd = osmd; // give access to osmd object in Browser console, e.g. for osmd.setOptions()
+                                //console.log("e.target.result: " + e.target.result);
+                                osmd.render();
+                                osmd.cursor.show(); // this would show the cursor on the first note
+                                // osmd.cursor.next(); // advance the cursor one note
+
+                                const canvas = document.querySelector(`#${SCORE_DIV_ID}`);
+
+                                // const canvasSvg = document.querySelector('#osmdCanvas svg');
+
+                                // const canvasWrapper = document.createElement('div');
+                                // canvasWrapper.classList.add('canvas-wrapper');
+
+                                // canvasSvg.parentNode.insertBefore(canvasWrapper, canvasSvg);
+
+                                // canvasWrapper.appendChild(canvasSvg);
+
+                                // maintain map of osmd timestamps, will be mapped to recording timestamps
+                                let timestamps = new Map();
+                                let insertIndex = 0;
+                                canvas.addEventListener('click', (clickEvent) => {
+                                    const clickLocation = new opensheetmusicdisplay.PointF2D(clickEvent.pageX, clickEvent.pageY);
+                                    const sheetLocation = getOSMDCoordinates(clickLocation, canvas);
+                                    const clickedVoiceEntry = osmd.GraphicSheet.GetNearestVoiceEntry(sheetLocation).parentVoiceEntry;
+                                    moveCursorToVoiceEntry(clickedVoiceEntry);
+
+                                    timestamps.set(osmd.cursor.Iterator.currentTimeStamp.realValue, insertIndex);
+                                    insertIndex++;
+                                    
+                                    //sort 
+                                    const sortedMap = new Map([...timestamps].sort((a, b) => String(a[0]).localeCompare(b[0])));
+                                    timestamps = sortedMap;
+
+                                    console.log(timestamps);
+                                    // contains a voice for each unique timestamp
+
+                                });
+
+                            }
+                        );
+                };
+                if (file.name.match('.*\.mxl')) {
+                    // have to read as binary, otherwise JSZip will throw ("corrupted zip: missing 37 bytes" or similar)
+                    reader.readAsBinaryString(file);
+                } else {
+                    reader.readAsText(file);
+                }
+            }
+        }
+
+        document.getElementById("files").addEventListener("change", handleFileSelect, false);
+
+
+
+    </script>
+
+</body>
+
+</html>
