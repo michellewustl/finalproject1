@@ -1,12 +1,62 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     var myModal = new bootstrap.Modal(document.getElementById('instructionModal'));
     myModal.show();
-  });
+});
+
+
+
+function FileInput() {
+    const {fileContent, setFileContent}= React.useContext(OSMDContext);
+
+    function readFile(file) {
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const f = e.target.result;
+            setFileContent(f);
+        };
+        if (file.name.match('.*\.mxl')) {
+            // have to read as binary, otherwise JSZip will throw ("corrupted zip: missing 37 bytes" or similar)
+            reader.readAsBinaryString(file);
+        } else {
+            reader.readAsText(file);
+        }
+    }
+
+    function handleFileSelect(evt) {
+        console.log("handling file select")
+        var maxOSMDDisplays = 10; // how many scores can be displayed at once (in a vertical layout)
+        var files = evt.target.files; // FileList object
+        var osmdDisplays = Math.min(files.length, maxOSMDDisplays);
+
+        for (var i = 0, file = files[i]; i < osmdDisplays; i++) {
+            if (!file.name.match('.*\.xml') && !file.name.match('.*\.musicxml') && false) {
+                alert('You selected a non-xml file. Please select only music xml files.');
+                continue;
+            }
+
+            readFile(file);
+            console.log("setfile content")
+        }
+    }
+
+    return (
+        <div class="my-auto file-select-window">
+            <p>Choose the file from the resources folder if there are CORS issues. <a href="https://github.com/opensheetmusicdisplay/RawJavascript-usage-example">The OSMD documentation</a> describes the CORS issues that occur when using this API and how to resolve them.</p>
+            <input type="file" id="files" accept=".musicxml" onChange={handleFileSelect} />
+        </div>
+    )
+}
+
+
 const OSMDContext = React.createContext(null);
 
 // React components are just functions that return JSX
 // the function name is capitalized to distinguish it from regular HTML elements
 function MyApp() {
+
+    const [fileContent, setFileContent] = React.useState(null);
+
 
     const [mode, setMode] = React.useState('edit'); // 'view' or 'edit'
 
@@ -32,16 +82,19 @@ function MyApp() {
     }, [mode]);
 
     return (
-        <TimeContext.Provider value={{ currentTimeRef, setCurrentTime, currentTimeTick, totalDuration, setTotalDuration, currentTimestamp, setCurrentTimestamp }}>
-            <OSMDContext.Provider value={{ osmd, setOsmd }}>
-                {mode === 'view' ? (
-                    <ViewApp timestampList={timestampList} isPaused={isPaused} setIsPaused={setIsPaused} />
-                ) : (
-                    <EditApp timestampList={timestampList} setTimestampList={setTimestampList} isPaused={isPaused} setIsPaused={setIsPaused} />
-                )}
-                <ModeButton mode={mode} onClick={() => setMode(mode === 'view' ? 'edit' : 'view')} />
-            </OSMDContext.Provider>
-        </TimeContext.Provider>
+        <>
+            <TimeContext.Provider value={{ currentTimeRef, setCurrentTime, currentTimeTick, totalDuration, setTotalDuration, currentTimestamp, setCurrentTimestamp }}>
+                <OSMDContext.Provider value={{ osmd, setOsmd, fileContent, setFileContent }}>
+                    <FileInput fileContent={fileContent} setFileContent={setFileContent} />
+                    {mode === 'view' ? (
+                        <ViewApp timestampList={timestampList} isPaused={isPaused} setIsPaused={setIsPaused} />
+                    ) : (
+                        <EditApp timestampList={timestampList} setTimestampList={setTimestampList} isPaused={isPaused} setIsPaused={setIsPaused} />
+                    )}
+                    <ModeButton mode={mode} onClick={() => setMode(mode === 'view' ? 'edit' : 'view')} />
+                </OSMDContext.Provider>
+            </TimeContext.Provider>
+        </>
     );
 }
 
@@ -1161,7 +1214,7 @@ function MeasureMap({ children, timestampList, insertTimestamp, mode, isPaused }
             const newTime = timestampList.find(item => item.id === currentTimestamp)?.value;
             if (newTime != undefined) {
                 setCurrentTime(newTime);
-                console.log("setting current time to"+newTime)
+                console.log("setting current time to" + newTime)
             }
         }
     }
@@ -1257,10 +1310,12 @@ function MeasureMap({ children, timestampList, insertTimestamp, mode, isPaused }
 
 
 // React component containing OSMD score
-function OSMDScore({ name = 'osmdCanvas', mode }) {
+function OSMDScore({ name = 'osmdCanvas', mode, file = "resources/examples/scores/bach-violin-sonata-2-in-am-andante-bwv1003.musicxml" }) {
+
+    // const fileRef = React.useRef(null);
 
     const containerRef = React.useRef(null); // div containing the OSMD canvas
-    const { osmd, setOsmd } = React.useContext(OSMDContext);
+    const { osmd, setOsmd, fileContent } = React.useContext(OSMDContext);
 
     React.useEffect(() => {
         const newOsmd = new opensheetmusicdisplay.OpenSheetMusicDisplay(containerRef.current, {
@@ -1271,7 +1326,13 @@ function OSMDScore({ name = 'osmdCanvas', mode }) {
             drawUpToMeasureNumber: Number.MAX_SAFE_INTEGER // draw all measures, up to the end of the sample
         });
 
-        newOsmd.load("../../resources/examples/scores/bach-violin-sonata-2-in-am-andante-bwv1003.musicxml").then(
+        console.log("checking file content == null, "+fileContent)
+
+        if(fileContent != null) {
+            file = fileContent;
+        }
+
+        newOsmd.load(file).then(
             function () {
 
                 window.osmd = newOsmd; // give access to osmd object in Browser console, e.g. for osmd.setOptions()
@@ -1306,7 +1367,7 @@ function OSMDScore({ name = 'osmdCanvas', mode }) {
             // osmd?.destroy();
             setOsmd(null);
         }
-    }, []);
+    }, [fileContent]);
 
 
 
